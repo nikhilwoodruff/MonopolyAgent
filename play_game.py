@@ -30,14 +30,15 @@ class Board:
     
 class Player:
 
-    def __init__(self, model, start_location=0, start_funds=1500):
+    def __init__(self, model, epsilon, start_location=0, start_funds=1500):
         self.model = model
         self.location = start_location
         self.funds = start_funds
+        self.epsilon = epsilon
 
 class Game:
 
-    def __init__(self, model, epsilon):
+    def __init__(self, model, epsilon, verbose):
         self.neural_model = model
         self.epsilon = epsilon
         self.ownership_inputs = []
@@ -45,6 +46,7 @@ class Game:
         self.revenues = []
         self.input_history = []
         self.output_history = []
+        self.verbose = verbose
     
     def get_observations(self):
         return np.array(self.input_history), np.array(self.output_history)
@@ -77,13 +79,12 @@ class Game:
     def set_up_game(self, models):
         self.players = []
         for model in models:
-            self.players.append(Player(model))
+            self.players.append(Player(model, self.epsilon))
         self.board = Board()
     
     def play_games(self, num_games):
         for _ in range(num_games):
             self.simulate_game()
-            #print("Finished game " + str(_) + "/" + str(num_games))
     
     def remove_player(self, player_id):
         self.players[player_id].funds = 0
@@ -93,13 +94,50 @@ class Game:
                 self.board.houses[property_num] = 0
         self.bankrupt_players.append(player_id)
 
+    def log(self, message):
+        if self.verbose:
+            print(message)
+
     def simulate_game(self):
         self.set_up_game([self.neural_model, self.neural_model, self.neural_model])
         self.bankrupt_players = []
-        while len(self.bankrupt_players) < 2:
+        self.turn_count = 0
+        while len(self.bankrupt_players) < 2 and self.turn_count < 500:
             for index in range(len(self.players)):
+                self.turn_count += 1
                 self.have_go(index)
+        self.log(self.board.ownership)
         self.save_observations()
+
+    def check_upgrade_eligible(self, property_num, player_id):
+        self.current_category = self.board.board_data[self.board.property_space_map[property_num]]['category']
+        for property_id in range(22):
+            self.current_property = self.board.board_data[self.board.property_space_map[property_id]]
+            self.property_category = self.current_property['category']
+            if self.property_category == self.current_category:
+                if self.board.ownership[property_id] != player_id:
+                    return False
+        if self.board.houses[property_num] >= 3:
+            return False
+        return True
+
+    def get_property_data(self, property_id):
+        return self.board.board_data[self.board.property_space_map[property_id]]
+
+    def create_colour_bonus(self, player_index, valuations, factor):
+        self.categories = []
+        for property_id in range(len(self.board.ownership_array[player_index])):
+            if self.board.ownership_array[player_index][property_id] == 1:
+                if not self.check_upgrade_eligible(property_id, player_index):
+                    self.categories.append(self.get_property_data(property_id)['category'])
+        if len(self.categories) == 0:
+            return valuations
+        for property_id in range(22):
+            if self.get_property_data(property_id)['category'] in self.categories:
+                valuations[property_id] *=  factor
+            else:
+                valuations[property_id] /= factor     
+        return valuations
 
     def have_go(self, player_index):
         if player_index not in self.bankrupt_players:
@@ -114,8 +152,8 @@ class Game:
                 self.current_owner = self.board.ownership[self.current_property]
                 self.board.ownership_one_hot()
                 self.input_ownership = np.array(self.board.ownership_array).flatten().reshape(1, 66)
-                self.valuation = self.players[player_index].model.predict(self.input_ownership)
-                self.predictions.append(self.valuation[0])
+                self.valuation = self.players[player_index].model.predict(self.input_ownership)[0]
+                self.predictions.append(self.valuation)
                 self.ownership_inputs.append(self.input_ownership[0])
                 if len(self.revenues) == 0:
                     self.revenues.append(np.zeros(22))
@@ -128,17 +166,15 @@ class Game:
                     self.revenues[-1][self.current_property] += self.current_rent
                 else:
                     self.buy_price = self.board.board_data[self.players[player_index].location]['buy_price']
-                    if random() < self.epsilon:
-                        self.valuation = np.random.randint(400, size=22).reshape(1, 22)
-                    if self.valuation[0][self.current_property] >= self.buy_price:
+                    if random() < self.players[player_index].epsilon:
+                        self.valuation = np.random.randint(400, size=22)
+                    self.valuation = self.create_colour_bonus(player_index, self.valuation, 10)
+                    if self.valuation[self.board.space_property_map[self.players[player_index].location]] >= self.buy_price:
                         self.buy_property(player_index)
-                    self.owned_indices = []
-                    for val_index in range(22):
-                        if self.board.ownership[val_index] == player_index and self.board.houses[val_index] < 5:
-                            self.owned_indices.append(True)
-                        else:
-                            self.owned_indices.append(False)
-                    if True in self.owned_indices:
-                        self.upgrade_eligible = np.array(self.valuation[0])[np.array(self.owned_indices)]
-                        self.upgrade_indices = np.array(range(22))[np.array(self.owned_indices)]
-                        self.upgrade_property(player_index, self.upgrade_indices[np.argmax(self.upgrade_eligible)])
+                self.owned_indices = []
+                for val_index in range(22):
+                    self.owned_indices.append(self.check_upgrade_eligible(val_index, player_index))
+                if True in self.owned_indices:
+                    self.upgrade_eligible = np.array(self.valuation)[np.array(self.owned_indices)]
+                    self.upgrade_indices = np.array(range(22))[np.array(self.owned_indices)]
+                    self.upgrade_property(player_index, self.upgrade_indices[np.argmax(self.upgrade_eligible)])
