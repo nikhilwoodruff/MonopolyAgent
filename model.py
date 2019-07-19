@@ -11,10 +11,10 @@ tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logdir)
 
 def monopoly_model():
     model = Sequential()
-    model.add(Dense(512, input_shape=(66,), activation='relu'))
+    model.add(Dense(128, input_shape=(66,), activation='relu'))
     model.add(Dense(22, activation='linear'))
     model.compile(optimizer='adam', loss='mean_squared_error', metrics=['accuracy'])
-    model.load_weights('model.h5')
+    #model.load_weights('model.h5')
     return model
 
 def get_end_balances(model, prev_model_1, prev_model_2):
@@ -28,11 +28,10 @@ model = monopoly_model()
 training_runs = 1
 while(True):
     for x in range(100):
-        monopoly = Game(model, 1 - x * 0.01, False)
-        print("Generating game data with epsilon=" + str(1 - x * 0.1))
+        monopoly = Game(model, 0.4, False)
         monopoly.play_games(32)
         X, Y = monopoly.get_observations()
-        model.fit(x=X, y=Y, epochs=1, validation_split=0.1, verbose=1, callbacks=[tensorboard_callback])
+        model.fit(x=X, y=Y, epochs=10, validation_split=0.1, verbose=1, callbacks=[tensorboard_callback])
         model.save_weights('model.h5')
         model_history[0] = model_history[1]
         model_history[1] = model_history[2]

@@ -153,6 +153,7 @@ class Game:
                 self.board.ownership_one_hot()
                 self.input_ownership = np.array(self.board.ownership_array).flatten().reshape(1, 66)
                 self.valuation = self.players[player_index].model.predict(self.input_ownership)[0]
+                self.valuation = self.create_colour_bonus(player_index, self.valuation, 10)
                 self.predictions.append(self.valuation)
                 self.ownership_inputs.append(self.input_ownership[0])
                 if len(self.revenues) == 0:
@@ -160,10 +161,10 @@ class Game:
                 else:
                     self.revenues.append(np.copy(self.revenues[-1]))
                 if self.current_owner != -1 and self.current_owner not in self.bankrupt_players:
-                    self.current_rent = self.board.board_data[self.players[player_index].location]['prices'][int(self.board.houses[self.current_property])]
+                    self.current_rent = self.board.board_data[self.players[player_index].location]['prices'][int(self.board.houses[self.board.space_property_map[self.players[player_index].location]])]
                     self.players[player_index].funds -= self.current_rent
                     self.players[int(self.current_owner)].funds += self.current_rent
-                    self.revenues[-1][self.current_property] += self.current_rent
+                    self.revenues[-1][self.board.space_property_map[self.players[player_index].location]] += self.current_rent
                 else:
                     self.buy_price = self.board.board_data[self.players[player_index].location]['buy_price']
                     if random() < self.players[player_index].epsilon:
