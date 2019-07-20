@@ -54,10 +54,11 @@ class Game:
     def save_observations(self):
         self.future_revenues = []
         for time_step in range(len(self.revenues)):
-            self.future_revenue = self.revenues[-1] - self.revenues[time_step]
+            self.future_revenue = np.tanh(self.revenues[-1] / 800 - 1 / 2)
             for property_id in range(len(self.future_revenue)):
                 if self.future_revenue[property_id] == 0:
-                    self.future_revenue[property_id] = self.predictions[time_step][property_id]
+                    pass
+                    #self.future_revenue[property_id] = self.predictions[time_step][property_id]
             self.future_revenues.append(self.future_revenue)
         self.ownership_inputs = self.ownership_inputs[1:]
         self.future_revenues = self.future_revenues[1:]
