@@ -59,6 +59,8 @@ class Game:
                 if self.future_revenue[property_id] == 0:
                     self.future_revenue[property_id] = self.predictions[time_step][property_id]
             self.future_revenues.append(self.future_revenue)
+        self.ownership_inputs = self.ownership_inputs[1:]
+        self.future_revenues = self.future_revenues[1:]
         for step in range(len(self.future_revenues)):
             self.input_history.append(self.ownership_inputs[step])
             self.output_history.append(self.future_revenues[step])
@@ -88,10 +90,6 @@ class Game:
     
     def remove_player(self, player_id):
         self.players[player_id].funds = 0
-        for property_num in range(len(self.board.ownership)):
-            if self.board.ownership[property_num] == player_id:
-                self.board.ownership[property_num] = -1
-                self.board.houses[property_num] = 0
         self.bankrupt_players.append(player_id)
 
     def log(self, message):
@@ -102,7 +100,7 @@ class Game:
         self.set_up_game([self.neural_model, self.neural_model, self.neural_model])
         self.bankrupt_players = []
         self.turn_count = 0
-        while len(self.bankrupt_players) < 2 and self.turn_count < 500:
+        while len(self.bankrupt_players) < 2 and self.turn_count < 750:
             for index in range(len(self.players)):
                 self.turn_count += 1
                 self.have_go(index)
@@ -131,12 +129,12 @@ class Game:
                 if not self.check_upgrade_eligible(property_id, player_index):
                     self.categories.append(self.get_property_data(property_id)['category'])
         if len(self.categories) == 0:
+            for val in range(len(valuations)):
+                valuations[val] += factor
             return valuations
         for property_id in range(22):
             if self.get_property_data(property_id)['category'] in self.categories:
-                valuations[property_id] *=  factor
-            else:
-                valuations[property_id] /= factor     
+                valuations[property_id] +=  factor
         return valuations
 
     def have_go(self, player_index):
@@ -153,8 +151,8 @@ class Game:
                 self.board.ownership_one_hot()
                 self.input_ownership = np.array(self.board.ownership_array).flatten().reshape(1, 66)
                 self.valuation = self.players[player_index].model.predict(self.input_ownership)[0]
-                self.valuation = self.create_colour_bonus(player_index, self.valuation, 10)
-                self.predictions.append(self.valuation)
+                self.predictions.append(self.valuation.copy())
+                self.valuation = self.create_colour_bonus(player_index, self.valuation, 400)
                 self.ownership_inputs.append(self.input_ownership[0])
                 if len(self.revenues) == 0:
                     self.revenues.append(np.zeros(22))
@@ -167,9 +165,6 @@ class Game:
                     self.revenues[-1][self.board.space_property_map[self.players[player_index].location]] += self.current_rent
                 else:
                     self.buy_price = self.board.board_data[self.players[player_index].location]['buy_price']
-                    if random() < self.players[player_index].epsilon:
-                        self.valuation = np.random.randint(400, size=22)
-                    self.valuation = self.create_colour_bonus(player_index, self.valuation, 10)
                     if self.valuation[self.board.space_property_map[self.players[player_index].location]] >= self.buy_price:
                         self.buy_property(player_index)
                 self.owned_indices = []
